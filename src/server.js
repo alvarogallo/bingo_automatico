@@ -1,4 +1,6 @@
 // src/server.js
+require('dotenv').config(); // Cargar variables de entorno
+
 const http = require('http');
 const db = require('./config/database');
 const { 
@@ -10,6 +12,14 @@ const {
 
 let intervalId = null;
 
+const intervalo = parseInt(process.env.INTERVALO, 10) * 1000;
+const segundos = parseInt(process.env.INTERVALO, 10);
+const milisegundos = segundos * 1000;
+
+// Log para mostrar los segundos y milisegundos
+console.log(`Intervalo configurado: ${segundos} segundos (${milisegundos} milisegundos)`);
+
+
 const iniciarNuevoBingo = async () => {
     const proximaHora = obtenerProximaHora();
     
@@ -17,6 +27,7 @@ const iniciarNuevoBingo = async () => {
         db.run(
             `INSERT INTO bingo_juegos (estado, hora_inicio, numeros_cantados) 
              VALUES (?, ?, ?)`,
+
             ['programado', proximaHora.formateada, '[]'],
             function(err) {
                 if (err) reject(err);
@@ -38,7 +49,7 @@ const generarSiguienteNumero = async (juegoId) => {
                 }
             );
         });
-        
+
         let numerosCantados = [];
         try {
             numerosCantados = JSON.parse(row.numeros_cantados || '[]');
@@ -46,9 +57,9 @@ const generarSiguienteNumero = async (juegoId) => {
             console.log('Error parseando numeros_cantados en generarSiguienteNumero, usando array vacío');
             numerosCantados = [];
         }
-        
+
         const nuevoNumero = generarNumeroUnico(numerosCantados);
-        
+
         if (nuevoNumero) {
             numerosCantados.push(nuevoNumero);
             await new Promise((resolve, reject) => {
@@ -61,7 +72,7 @@ const generarSiguienteNumero = async (juegoId) => {
                     }
                 );
             });
-            
+
             console.log(`Número generado: ${nuevoNumero}`);
             return numerosCantados;
         } else {
@@ -86,7 +97,6 @@ const generarSiguienteNumero = async (juegoId) => {
 
 const obtenerEstadoJuego = async () => {
     try {
-        // Buscar juego en curso
         let row = await new Promise((resolve, reject) => {
             db.get(
                 "SELECT * FROM bingo_juegos WHERE estado IN ('programado', 'en_curso') ORDER BY id DESC LIMIT 1",
@@ -97,7 +107,6 @@ const obtenerEstadoJuego = async () => {
             );
         });
 
-        // Si no hay juego, crear uno nuevo
         if (!row) {
             const nuevoJuegoId = await iniciarNuevoBingo();
             row = await new Promise((resolve, reject) => {
@@ -111,7 +120,6 @@ const obtenerEstadoJuego = async () => {
         const horaActual = obtenerHoraActual().fecha;
         const horaInicio = new Date(row.hora_inicio);
 
-        // Asegurarse de que numeros_cantados sea un array válido
         let numerosCantados = [];
         try {
             numerosCantados = JSON.parse(row.numeros_cantados || '[]');
@@ -120,7 +128,6 @@ const obtenerEstadoJuego = async () => {
             numerosCantados = [];
         }
 
-        // Verificar si es hora de iniciar
         if (row.estado === 'programado' && horaActual >= horaInicio) {
             await new Promise((resolve, reject) => {
                 db.run(
@@ -134,9 +141,8 @@ const obtenerEstadoJuego = async () => {
             });
             row.estado = 'en_curso';
 
-            // Iniciar generación de números
             if (!intervalId) {
-                intervalId = setInterval(() => generarSiguienteNumero(row.id), 20000);
+                intervalId = setInterval(() => generarSiguienteNumero(row.id), intervalo); // Usar el intervalo del archivo .env
             }
         }
 
@@ -153,40 +159,9 @@ const obtenerEstadoJuego = async () => {
     }
 };
 
-// const server = http.createServer(async (req, res) => {
-//     res.writeHead(200, {'Content-Type': 'text/html; charset=utf-8'});
-    
-//     try {
-//         const estadoJuego = await obtenerEstadoJuego();
-//         let html = '<h1>Sistema de Bingo</h1>';
-
-//         if (estadoJuego.estado === 'programado') {
-//             html += `
-//                 <h2>Próximo bingo en: ${estadoJuego.tiempoRestante}</h2>
-//                 <p>Hora de inicio: ${estadoJuego.horaInicio}</p>
-//             `;
-//         } else if (estadoJuego.estado === 'en_curso') {
-//             const numeros = estadoJuego.numerosCantados;
-//             html += `
-//                 <h2>Bingo en curso</h2>
-//                 <h3>Último número: ${numeros[numeros.length - 1] || 'Generando...'}</h3>
-//                 <h4>Números cantados: ${numeros.join(', ') || 'Iniciando...'}</h4>
-//                 <p>Total números generados: ${numeros.length}/75</p>
-//             `;
-//         }
-
-//         res.end(html);
-//     } catch (error) {
-//         console.error('Error en el servidor:', error);
-//         res.end('<h1>Error al procesar la solicitud</h1>');
-//     }
-// });
-
-// En server.js, modifica la parte donde generamos el HTML
-
 const server = http.createServer(async (req, res) => {
     res.writeHead(200, {'Content-Type': 'text/html; charset=utf-8'});
-    
+
     try {
         const estadoJuego = await obtenerEstadoJuego();
         let html = `
@@ -225,7 +200,7 @@ const server = http.createServer(async (req, res) => {
                         const horaObjetivo = new Date('${estadoJuego.horaInicio}');
                         const ahora = new Date();
                         let diferencia = horaObjetivo - ahora;
-                        
+
                         if (diferencia <= 0) {
                             location.reload();
                             return;
@@ -233,16 +208,14 @@ const server = http.createServer(async (req, res) => {
 
                         const minutos = Math.floor((diferencia % (1000 * 60 * 60)) / (1000 * 60));
                         const segundos = Math.floor((diferencia % (1000 * 60)) / 1000);
-                        
+
                         document.getElementById('countdown').textContent = 
                             minutos + ':' + segundos.toString().padStart(2, '0');
                     }
 
-                    // Actualizar cada segundo
                     actualizarContador();
                     setInterval(actualizarContador, 1000);
 
-                    // Recargar la página cuando llegue la hora
                     const horaObjetivo = new Date('${estadoJuego.horaInicio}');
                     const tiempoHastaRecarga = horaObjetivo - new Date();
                     if (tiempoHastaRecarga > 0) {
@@ -261,8 +234,7 @@ const server = http.createServer(async (req, res) => {
                 </div>
                 
                 <script>
-                    // Recargar la página cada 20 segundos para ver nuevos números
-                    setTimeout(() => location.reload(), 20000);
+                    setTimeout(() => location.reload(), ${intervalo}); // Usar el intervalo del archivo .env
                 </script>
             `;
         }
