@@ -79,6 +79,57 @@ const generarSiguienteNumero = async (juegoId) => {
             return numerosCantados;
         } else {
             clearInterval(intervalId);
+
+            // Obtener la información del bingo actual
+            const bingoInfo = await new Promise((resolve, reject) => {
+                db.get(
+                    'SELECT hora_inicio, numeros_cantados FROM bingo_juegos WHERE id = ?',
+                    [juegoId],
+                    (err, row) => {
+                        if (err) reject(err);
+                        else resolve(row);
+                    }
+                );
+            });
+
+            // Obtener solo la hora del inicio (HH:mm)
+            const horaInicio = new Date(bingoInfo.hora_inicio)
+                .toLocaleTimeString('es-CO', { 
+                    hour: '2-digit', 
+                    minute: '2-digit',
+                    hour12: false 
+                });
+
+            // Guardar en historial
+            await new Promise((resolve, reject) => {
+                db.run(
+                    'INSERT INTO historial (fecha_hora, json_numeros) VALUES (?, ?)',
+                    [horaInicio, bingoInfo.numeros_cantados],
+                    (err) => {
+                        if (err) reject(err);
+                        else resolve();
+                    }
+                );
+            });
+
+            // Limpiar registros antiguos (mantener solo los últimos 64)
+            await new Promise((resolve, reject) => {
+                db.run(`
+                    DELETE FROM historial 
+                    WHERE id NOT IN (
+                        SELECT id 
+                        FROM historial 
+                        ORDER BY created_at DESC 
+                        LIMIT 64
+                    )`,
+                    (err) => {
+                        if (err) reject(err);
+                        else resolve();
+                    }
+                );
+            });
+
+            // Actualizar estado del juego actual
             await new Promise((resolve, reject) => {
                 db.run(
                     'UPDATE bingo_juegos SET estado = ?, hora_fin = ? WHERE id = ?',
@@ -89,6 +140,7 @@ const generarSiguienteNumero = async (juegoId) => {
                     }
                 );
             });
+
             return null;
         }
     } catch (error) {
@@ -96,6 +148,7 @@ const generarSiguienteNumero = async (juegoId) => {
         return null;
     }
 };
+
 
 const obtenerEstadoJuego = async () => {
     try {

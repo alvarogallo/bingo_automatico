@@ -26,7 +26,14 @@ const createTables = () => {
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         `);
-
+        db.run(`
+            CREATE TABLE IF NOT EXISTS historial (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                fecha_hora TIME NOT NULL,
+                json_numeros TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
         console.log('Tablas creadas exitosamente');
     });
 };
