@@ -79,69 +79,96 @@ const generarSiguienteNumero = async (juegoId) => {
             return numerosCantados;
         } else {
             clearInterval(intervalId);
+            console.log('Bingo completado, guardando en historial...');
 
-            // Obtener la información del bingo actual
-            const bingoInfo = await new Promise((resolve, reject) => {
-                db.get(
-                    'SELECT hora_inicio, numeros_cantados FROM bingo_juegos WHERE id = ?',
-                    [juegoId],
-                    (err, row) => {
-                        if (err) reject(err);
-                        else resolve(row);
-                    }
-                );
-            });
-
-            // Obtener solo la hora del inicio (HH:mm)
-            const horaInicio = new Date(bingoInfo.hora_inicio)
-                .toLocaleTimeString('es-CO', { 
-                    hour: '2-digit', 
-                    minute: '2-digit',
-                    hour12: false 
+            try {
+                // 1. Obtener información completa del bingo
+                const bingoInfo = await new Promise((resolve, reject) => {
+                    db.get(
+                        'SELECT hora_inicio, numeros_cantados FROM bingo_juegos WHERE id = ?',
+                        [juegoId],
+                        (err, row) => {
+                            if (err) reject(err);
+                            else resolve(row);
+                        }
+                    );
                 });
 
-            // Guardar en historial
-            await new Promise((resolve, reject) => {
-                db.run(
-                    'INSERT INTO historial (fecha_hora, json_numeros) VALUES (?, ?)',
-                    [horaInicio, bingoInfo.numeros_cantados],
-                    (err) => {
-                        if (err) reject(err);
-                        else resolve();
-                    }
-                );
-            });
+                // 2. Formatear la hora en formato HH:mm
+                const horaInicio = new Date(bingoInfo.hora_inicio)
+                    .toLocaleTimeString('es-CO', { 
+                        hour: '2-digit', 
+                        minute: '2-digit',
+                        hour12: false 
+                    });
 
-            // Limpiar registros antiguos (mantener solo los últimos 64)
-            await new Promise((resolve, reject) => {
-                db.run(`
-                    DELETE FROM historial 
-                    WHERE id NOT IN (
-                        SELECT id 
-                        FROM historial 
-                        ORDER BY created_at DESC 
-                        LIMIT 64
-                    )`,
-                    (err) => {
-                        if (err) reject(err);
-                        else resolve();
-                    }
-                );
-            });
+                // 3. Preparar el JSON de números
+                const numerosJSON = JSON.stringify({
+                    numeros: numerosCantados
+                });
 
-            // Actualizar estado del juego actual
-            await new Promise((resolve, reject) => {
-                db.run(
-                    'UPDATE bingo_juegos SET estado = ?, hora_fin = ? WHERE id = ?',
-                    ['terminado', obtenerHoraActual().formateada, juegoId],
-                    (err) => {
-                        if (err) reject(err);
-                        else resolve();
-                    }
-                );
-            });
+                console.log('Guardando en historial:', {
+                    hora: horaInicio,
+                    numeros: numerosJSON
+                });
 
-            return null;
+                // 4. Insertar en historial
+                await new Promise((resolve, reject) => {
+                    db.run(
+                        'INSERT INTO historial (fecha_hora, json_numeros) VALUES (?, ?)',
+                        [horaInicio, numerosJSON],
+                        function(err) {
+                            if (err) {
+                                console.error('Error guardando en historial:', err);
+                                reject(err);
+                            } else {
+                                console.log('Guardado en historial con ID:', this.lastID);
+                                resolve();
+                            }
+                        }
+                    );
+                });
+
+                // 5. Limpiar registros antiguos
+                await new Promise((resolve, reject) => {
+                    db.run(`
+                        DELETE FROM historial 
+                        WHERE id NOT IN (
+                            SELECT id 
+                            FROM historial 
+                            ORDER BY created_at DESC 
+                            LIMIT 64
+                        )`,
+                        (err) => {
+                            if (err) {
+                                console.error('Error limpiando historial antiguo:', err);
+                                reject(err);
+                            } else {
+                                console.log('Historial antiguo limpiado');
+                                resolve();
+                            }
+                        }
+                    );
+                });
+
+                // 6. Marcar bingo como terminado
+                await new Promise((resolve, reject) => {
+                    db.run(
+                        'UPDATE bingo_juegos SET estado = ?, hora_fin = ? WHERE id = ?',
+                        ['terminado', obtenerHoraActual().formateada, juegoId],
+                        (err) => {
+                            if (err) reject(err);
+                            else resolve();
+                        }
+                    );
+                });
+
+                console.log('Proceso de guardado completado');
+                return null;
+            } catch (error) {
+                console.error('Error en el proceso de guardado:', error);
+                throw error;
+            }
         }
     } catch (error) {
         console.error('Error generando número:', error);
