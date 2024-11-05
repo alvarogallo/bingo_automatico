@@ -17,13 +17,36 @@ const obtenerHoraActual = () => {
     };
 };
 
+// src/utils/funciones.js
 const obtenerProximaHora = () => {
     const ahora = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Bogota' }));
-    ahora.setHours(ahora.getHours() + 1);
-    ahora.setMinutes(0);
-    ahora.setSeconds(0);
-    ahora.setMilliseconds(0);
+    const frecuencia = process.env.FRECUENCIA || 'hora'; // valor por defecto 'hora'
     
+    // Obtener minutos actuales
+    const minutos = ahora.getMinutes();
+
+    // Si es frecuencia media hora
+    if (frecuencia === 'media') {
+        if (minutos < 30) {
+            // Si estamos antes de la media hora, programar para XX:30
+            ahora.setMinutes(30);
+            ahora.setSeconds(0);
+            ahora.setMilliseconds(0);
+        } else {
+            // Si estamos después de la media hora, programar para la siguiente hora
+            ahora.setHours(ahora.getHours() + 1);
+            ahora.setMinutes(0);
+            ahora.setSeconds(0);
+            ahora.setMilliseconds(0);
+        }
+    } else {
+        // Para frecuencia 'hora', mantener el comportamiento original
+        ahora.setHours(ahora.getHours() + 1);
+        ahora.setMinutes(0);
+        ahora.setSeconds(0);
+        ahora.setMilliseconds(0);
+    }
+
     const year = ahora.getFullYear();
     const month = String(ahora.getMonth() + 1).padStart(2, '0');
     const day = String(ahora.getDate()).padStart(2, '0');
@@ -31,12 +54,14 @@ const obtenerProximaHora = () => {
     const minutes = String(ahora.getMinutes()).padStart(2, '0');
     const seconds = String(ahora.getSeconds()).padStart(2, '0');
 
+    // Agregar log para debug
+    console.log(`Próximo bingo programado para: ${hours}:${minutes} (Frecuencia: ${frecuencia})`);
+
     return {
         fecha: ahora,
         formateada: `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
     };
 };
-
 const calcularTiempoRestante = (horaObjetivo) => {
     const ahora = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Bogota' }));
     const objetivo = new Date(horaObjetivo);

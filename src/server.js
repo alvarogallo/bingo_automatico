@@ -14,10 +14,12 @@ let intervalId = null;
 
 const intervalo = parseInt(process.env.INTERVALO, 10) * 1000;
 const segundos = parseInt(process.env.INTERVALO, 10);
-const milisegundos = segundos * 1000;
+const frecuencia = process.env.FRECUENCIA || 'hora';
 
 // Log para mostrar los segundos y milisegundos
-console.log(`Intervalo configurado: ${segundos} segundos (${milisegundos} milisegundos)`);
+console.log(`Configuración cargada:`);
+console.log(`- Intervalo: ${segundos} segundos (${intervalo} milisegundos)`);
+console.log(`- Frecuencia: ${frecuencia} (bingos cada ${frecuencia})`);
 
 
 const iniciarNuevoBingo = async () => {
