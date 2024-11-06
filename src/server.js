@@ -98,15 +98,33 @@ const generarSiguienteNumero = async (juegoId) => {
                 });
 
                 // Formatear hora para el historial (HH:mm)
-                const horaFormateada = new Date(bingoActual.hora_inicio)
-                    .toLocaleTimeString('es-CO', { 
-                        hour: '2-digit', 
-                        minute: '2-digit',
-                        hour12: false,
-                        timeZone: 'America/Bogota'
-                    });
-
-                // Preparar números para guardar
+                // const horaFormateada = new Date(bingoActual.hora_inicio)
+                //     .toLocaleTimeString('es-CO', { 
+                //         hour: '2-digit', 
+                //         minute: '2-digit',
+                //         hour12: false,
+                //         timeZone: 'America/Bogota'
+                //     });
+                // const horaFormateada = new Date(bingoActual.hora_inicio)
+                //     .toLocaleString('es-CO', {
+                //         year: 'numeric',
+                //         month: '2-digit',
+                //         day: '2-digit',
+                //         hour: '2-digit',
+                //         minute: '2-digit',
+                //         hour12: false,
+                //         timeZone: 'America/Bogota'
+                //     })
+                //     .replace(/\//g, '-'); 
+                const fecha = new Date(bingoActual.hora_inicio);
+                const year = fecha.getFullYear();
+                const month = String(fecha.getMonth() + 1).padStart(2, '0');
+                const day = String(fecha.getDate()).padStart(2, '0');
+                const hours = String(fecha.getHours()).padStart(2, '0');
+                const minutes = String(fecha.getMinutes()).padStart(2, '0');
+                
+                const horaFormateada = `${year}-${month}-${day} ${hours}:${minutes}`;
+                
                 const numerosParaGuardar = JSON.stringify({ numeros: numerosCantados });
 
                 console.log('Datos a guardar:');
@@ -243,6 +261,11 @@ const server = http.createServer(async (req, res) => {
         } else {
             res.writeHead(200, {'Content-Type': 'text/html; charset=utf-8'});
             const estadoJuego = await obtenerEstadoJuego();
+
+            const formatearFrecuencia = (freq) => {
+                return freq === 'media' ? 'media hora' : 'hora';
+            };
+
             let html = `
                 <html>
                 <head>
@@ -273,6 +296,18 @@ const server = http.createServer(async (req, res) => {
                         }
                         .historial-link:hover {
                             background-color: #0052a3;
+                        }
+                        hr {
+                            margin: 30px auto;
+                            width: 80%;
+                            border: 0;
+                            height: 1px;
+                            background-color: #ccc;
+                        }
+                        .footer-info {
+                            color: #666;
+                            font-size: 0.9em;
+                            margin: 20px 0;
                         }
                     </style>
                 </head>
@@ -331,7 +366,13 @@ const server = http.createServer(async (req, res) => {
                 `;
             }
 
+            // Agregar la información del sistema al final
             html += `
+                <hr>
+                <div class="footer-info">
+                    <p>Bingo cada ${formatearFrecuencia(process.env.FRECUENCIA || 'hora')}</p>
+                    <p>Los cartones se cantan cada ${process.env.INTERVALO || 10} segundos</p>
+                </div>
                 </body>
                 </html>
             `;

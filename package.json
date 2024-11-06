@@ -8,12 +8,13 @@
     "create:table": "node src/scripts/createTable.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "clean": "node src/scripts/cleanDatabase.js",
-     "historial": "node src/ver_historial.js"
+    "historial": "node src/ver_historial.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "dotenv": "^16.4.5",
     "sqlite3": "^5.1.7"
   }
 }

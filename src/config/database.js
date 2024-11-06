@@ -37,7 +37,7 @@ const db = new sqlite3.Database(dbPath, (err) => {
         db.run(`
             CREATE TABLE IF NOT EXISTS historial (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                fecha_hora TIME NOT NULL,
+                fecha_hora TEXT NOT NULL,
                 json_numeros TEXT NOT NULL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
