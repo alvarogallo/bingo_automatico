@@ -4,7 +4,7 @@ npm-debug.log
 yarn-error.log
 package-lock.json
 yarn.lock
-src/database/mydb.sqlite
+database/mydb.sqlite
 
 # Logs
 logs

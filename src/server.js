@@ -3,6 +3,7 @@ require('dotenv').config(); // Cargar variables de entorno
 
 const http = require('http');
 const db = require('./config/database');
+const { renderHistorial } = require('./routes/historial');
 
 const { 
     obtenerHoraActual, 
@@ -236,93 +237,110 @@ const obtenerEstadoJuego = async () => {
 };
 
 const server = http.createServer(async (req, res) => {
-    res.writeHead(200, {'Content-Type': 'text/html; charset=utf-8'});
-
     try {
-        const estadoJuego = await obtenerEstadoJuego();
-        let html = `
-            <html>
-            <head>
-                <title>Sistema de Bingo</title>
-                <style>
-                    body {
-                        font-family: Arial, sans-serif;
-                        margin: 20px;
-                        text-align: center;
-                    }
-                    .countdown {
-                        font-size: 2em;
-                        color: #0066cc;
-                        margin: 20px 0;
-                    }
-                    .numbers {
-                        margin: 20px 0;
-                        font-size: 1.2em;
-                    }
-                </style>
-            </head>
-            <body>
-                <h1>Sistema de Bingo</h1>
-        `;
+        if (req.url === '/historial') {
+            await renderHistorial(res);
+        } else {
+            res.writeHead(200, {'Content-Type': 'text/html; charset=utf-8'});
+            const estadoJuego = await obtenerEstadoJuego();
+            let html = `
+                <html>
+                <head>
+                    <title>Sistema de Bingo</title>
+                    <style>
+                        body {
+                            font-family: Arial, sans-serif;
+                            margin: 20px;
+                            text-align: center;
+                        }
+                        .countdown {
+                            font-size: 2em;
+                            color: #0066cc;
+                            margin: 20px 0;
+                        }
+                        .numbers {
+                            margin: 20px 0;
+                            font-size: 1.2em;
+                        }
+                        .historial-link {
+                            display: inline-block;
+                            margin: 20px 0;
+                            padding: 10px 20px;
+                            background-color: #0066cc;
+                            color: white;
+                            text-decoration: none;
+                            border-radius: 5px;
+                        }
+                        .historial-link:hover {
+                            background-color: #0052a3;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <h1>Sistema de Bingo</h1>
+                    <a href="/historial" class="historial-link">Ver Historial</a>
+            `;
 
-        if (estadoJuego.estado === 'programado') {
-            html += `
-                <h2>Próximo bingo en:</h2>
-                <div id="countdown" class="countdown">Calculando...</div>
-                <p>Hora de inicio: ${estadoJuego.horaInicio}</p>
-                
-                <script>
-                    function actualizarContador() {
-                        const horaObjetivo = new Date('${estadoJuego.horaInicio}');
-                        const ahora = new Date();
-                        let diferencia = horaObjetivo - ahora;
+            if (estadoJuego.estado === 'programado') {
+                html += `
+                    <h2>Próximo bingo en:</h2>
+                    <div id="countdown" class="countdown">Calculando...</div>
+                    <p>Hora de inicio: ${estadoJuego.horaInicio}</p>
+                    
+                    <script>
+                        function actualizarContador() {
+                            const horaObjetivo = new Date('${estadoJuego.horaInicio}');
+                            const ahora = new Date();
+                            let diferencia = horaObjetivo - ahora;
+                            
+                            if (diferencia <= 0) {
+                                location.reload();
+                                return;
+                            }
 
-                        if (diferencia <= 0) {
-                            location.reload();
-                            return;
+                            const minutos = Math.floor((diferencia % (1000 * 60 * 60)) / (1000 * 60));
+                            const segundos = Math.floor((diferencia % (1000 * 60)) / 1000);
+                            
+                            document.getElementById('countdown').textContent = 
+                                minutos + ':' + segundos.toString().padStart(2, '0');
                         }
 
-                        const minutos = Math.floor((diferencia % (1000 * 60 * 60)) / (1000 * 60));
-                        const segundos = Math.floor((diferencia % (1000 * 60)) / 1000);
+                        actualizarContador();
+                        setInterval(actualizarContador, 1000);
 
-                        document.getElementById('countdown').textContent = 
-                            minutos + ':' + segundos.toString().padStart(2, '0');
-                    }
+                        const horaObjetivo = new Date('${estadoJuego.horaInicio}');
+                        const tiempoHastaRecarga = horaObjetivo - new Date();
+                        if (tiempoHastaRecarga > 0) {
+                            setTimeout(() => location.reload(), tiempoHastaRecarga);
+                        }
+                    </script>
+                `;
+            } else if (estadoJuego.estado === 'en_curso') {
+                const numeros = estadoJuego.numerosCantados;
+                html += `
+                    <h2>Bingo en curso</h2>
+                    <div class="numbers">
+                        <h3>Último número: ${numeros[numeros.length - 1] || 'Generando...'}</h3>
+                        <h4>Números cantados: ${numeros.join(', ') || 'Iniciando...'}</h4>
+                        <p>Total números generados: ${numeros.length}/75</p>
+                    </div>
+                    
+                    <script>
+                        setTimeout(() => location.reload(), ${intervalo});
+                    </script>
+                `;
+            }
 
-                    actualizarContador();
-                    setInterval(actualizarContador, 1000);
-
-                    const horaObjetivo = new Date('${estadoJuego.horaInicio}');
-                    const tiempoHastaRecarga = horaObjetivo - new Date();
-                    if (tiempoHastaRecarga > 0) {
-                        setTimeout(() => location.reload(), tiempoHastaRecarga);
-                    }
-                </script>
-            `;
-        } else if (estadoJuego.estado === 'en_curso') {
-            const numeros = estadoJuego.numerosCantados;
             html += `
-                <h2>Bingo en curso</h2>
-                <div class="numbers">
-                    <h3>Último número: ${numeros[numeros.length - 1] || 'Generando...'}</h3>
-                    <h4>Números cantados: ${numeros.join(', ') || 'Iniciando...'}</h4>
-                    <p>Total números generados: ${numeros.length}/75</p>
-                </div>
-                
-                <script>
-                    setTimeout(() => location.reload(), ${intervalo}); // Usar el intervalo del archivo .env
-                </script>
+                </body>
+                </html>
             `;
+
+            res.end(html);
         }
-
-        html += `
-            </body>
-            </html>
-        `;
-
-        res.end(html);
     } catch (error) {
         console.error('Error en el servidor:', error);
+        res.writeHead(500, {'Content-Type': 'text/html; charset=utf-8'});
         res.end('<h1>Error al procesar la solicitud</h1>');
     }
 });
