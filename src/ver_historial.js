@@ -3,7 +3,8 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
 // Construir la ruta correcta a la base de datos
-const dbPath = path.join(__dirname, '../src/database/mydb.sqlite');
+//const dbPath = path.join(__dirname, '../src/database/mydb.sqlite');
+const dbPath = path.join(__dirname, '../database/mydb.sqlite');
 console.log('Intentando conectar a la base de datos en:', dbPath);
 
 const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READONLY, (err) => {
