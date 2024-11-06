@@ -3,6 +3,7 @@ require('dotenv').config(); // Cargar variables de entorno
 
 const http = require('http');
 const db = require('./config/database');
+
 const { 
     obtenerHoraActual, 
     obtenerProximaHora, 
@@ -79,13 +80,14 @@ const generarSiguienteNumero = async (juegoId) => {
             return numerosCantados;
         } else {
             clearInterval(intervalId);
-            console.log('Bingo completado, guardando en historial...');
+            console.log('\n=== Bingo Completado ===');
+            console.log('Guardando en historial...');
 
             try {
-                // 1. Obtener información completa del bingo
-                const bingoInfo = await new Promise((resolve, reject) => {
+                // Obtener información del bingo actual
+                const bingoActual = await new Promise((resolve, reject) => {
                     db.get(
-                        'SELECT hora_inicio, numeros_cantados FROM bingo_juegos WHERE id = ?',
+                        'SELECT hora_inicio FROM bingo_juegos WHERE id = ?',
                         [juegoId],
                         (err, row) => {
                             if (err) reject(err);
@@ -94,64 +96,56 @@ const generarSiguienteNumero = async (juegoId) => {
                     );
                 });
 
-                // 2. Formatear la hora en formato HH:mm
-                const horaInicio = new Date(bingoInfo.hora_inicio)
+                // Formatear hora para el historial (HH:mm)
+                const horaFormateada = new Date(bingoActual.hora_inicio)
                     .toLocaleTimeString('es-CO', { 
                         hour: '2-digit', 
                         minute: '2-digit',
-                        hour12: false 
+                        hour12: false,
+                        timeZone: 'America/Bogota'
                     });
 
-                // 3. Preparar el JSON de números
-                const numerosJSON = JSON.stringify({
-                    numeros: numerosCantados
-                });
+                // Preparar números para guardar
+                const numerosParaGuardar = JSON.stringify({ numeros: numerosCantados });
 
-                console.log('Guardando en historial:', {
-                    hora: horaInicio,
-                    numeros: numerosJSON
-                });
+                console.log('Datos a guardar:');
+                console.log('- Hora:', horaFormateada);
+                console.log('- Números:', numerosParaGuardar);
 
-                // 4. Insertar en historial
-                await new Promise((resolve, reject) => {
+                // Guardar en historial
+                const resultadoInsert = await new Promise((resolve, reject) => {
                     db.run(
                         'INSERT INTO historial (fecha_hora, json_numeros) VALUES (?, ?)',
-                        [horaInicio, numerosJSON],
+                        [horaFormateada, numerosParaGuardar],
                         function(err) {
                             if (err) {
-                                console.error('Error guardando en historial:', err);
+                                console.error('Error al insertar en historial:', err);
                                 reject(err);
                             } else {
-                                console.log('Guardado en historial con ID:', this.lastID);
-                                resolve();
+                                resolve(this.lastID);
                             }
                         }
                     );
                 });
 
-                // 5. Limpiar registros antiguos
-                await new Promise((resolve, reject) => {
-                    db.run(`
-                        DELETE FROM historial 
-                        WHERE id NOT IN (
-                            SELECT id 
-                            FROM historial 
-                            ORDER BY created_at DESC 
-                            LIMIT 64
-                        )`,
-                        (err) => {
-                            if (err) {
-                                console.error('Error limpiando historial antiguo:', err);
-                                reject(err);
-                            } else {
-                                console.log('Historial antiguo limpiado');
-                                resolve();
-                            }
+                console.log('Guardado exitoso en historial con ID:', resultadoInsert);
+
+                // Verificar el guardado
+                const verificacion = await new Promise((resolve, reject) => {
+                    db.get(
+                        'SELECT * FROM historial WHERE id = ?',
+                        [resultadoInsert],
+                        (err, row) => {
+                            if (err) reject(err);
+                            else resolve(row);
                         }
                     );
                 });
 
-                // 6. Marcar bingo como terminado
+                console.log('Verificación del registro guardado:');
+                console.log(verificacion);
+
+                // Actualizar estado del juego
                 await new Promise((resolve, reject) => {
                     db.run(
                         'UPDATE bingo_juegos SET estado = ?, hora_fin = ? WHERE id = ?',
@@ -163,7 +157,7 @@ const generarSiguienteNumero = async (juegoId) => {
                     );
                 });
 
-                console.log('Proceso de guardado completado');
+                console.log('=== Proceso de guardado completado ===\n');
                 return null;
             } catch (error) {
                 console.error('Error en el proceso de guardado:', error);

@@ -4,6 +4,7 @@ const path = require('path');
 // Define la ruta de la base de datos
 const dbPath = path.join(__dirname, '../database/mydb.sqlite');
 
+
 // Crea una nueva conexión a la base de datos
 const db = new sqlite3.Database(dbPath, (err) => {
     if (err) {

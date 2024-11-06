@@ -7,7 +7,8 @@
     "start": "node src/server.js",
     "create:table": "node src/scripts/createTable.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "clean": "node src/scripts/cleanDatabase.js"
+    "clean": "node src/scripts/cleanDatabase.js",
+     "historial": "node src/ver_historial.js"
   },
   "keywords": [],
   "author": "",
