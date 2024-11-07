@@ -80,8 +80,28 @@ const generarSiguienteNumero = async (juegoId) => {
                 );
             });
             try {
-                await emitirEventoLocal('bingo_auto', nuevoNumero);
-                console.log('Número enviado al socket:', nuevoNumero);
+                const bingoInfo = await new Promise((resolve, reject) => {
+                    db.get(
+                        'SELECT hora_inicio FROM bingo_juegos WHERE id = ?',
+                        [juegoId],
+                        (err, row) => {
+                            if (err) reject(err);
+                            else resolve(row);
+                        }
+                    );
+                });
+                const fecha = new Date(bingoInfo.hora_inicio);
+                const fechaBingo = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')} ${String(fecha.getHours()).padStart(2, '0')}:${String(fecha.getMinutes()).padStart(2, '0')}`;
+
+                await emitirEventoLocal(
+                    'bingo_auto', 
+                    nuevoNumero,
+                    numerosCantados.length, // secuencia actual
+                    fechaBingo              // nombre del bingo
+                );
+                console.log('Número enviado al socket:', nuevoNumero, 'Secuencia:', numerosCantados.length);
+            
+
             } catch (socketError) {
                 console.error('Error enviando número al socket:', socketError);
                 // No detenemos el bingo si falla el envío al socket
@@ -253,6 +273,36 @@ const server = http.createServer(async (req, res) => {
     try {
         if (req.url === '/historial') {
             await renderHistorial(res);
+        } else if (req.url === '/limpiar-tablas') {
+            // Limpiar las tablas y reiniciar el sistema
+            const estadoActual = await obtenerEstadoJuego();
+            if (estadoActual.estado === 'en_curso') {
+                console.log('Intento de limpieza con bingo en curso');
+                res.writeHead(400, {'Content-Type': 'text/html; charset=utf-8'});
+                res.end(`
+                    <h1>No se puede limpiar el sistema</h1>
+                    <p>Hay un bingo en curso. Espere a que termine.</p>
+                    <a href="/">Volver</a>
+                `);
+                return;
+            }            
+            if (intervalId) {
+                clearInterval(intervalId);
+                intervalId = null;
+            }
+            bingoActivo = false;
+            juegoIdActual = null;
+
+            await new Promise((resolve, reject) => {
+                db.run("DELETE FROM bingo_juegos", (err) => {
+                    if (err) reject(err);
+                    else resolve();
+                });
+            });
+
+            console.log('Tablas limpiadas, reiniciando sistema...');
+            res.writeHead(302, { 'Location': '/' }); // Redireccionar a la página principal
+            res.end();            
         } else {
             res.writeHead(200, {'Content-Type': 'text/html; charset=utf-8'});
             const estadoJuego = await obtenerEstadoJuego();
@@ -265,46 +315,40 @@ const server = http.createServer(async (req, res) => {
                 <html>
                 <head>
                     <title>Sistema de Bingo</title>
-                    <style>
-                        body {
-                            font-family: Arial, sans-serif;
-                            margin: 20px;
-                            text-align: center;
-                        }
-                        .countdown {
-                            font-size: 2em;
-                            color: #0066cc;
-                            margin: 20px 0;
-                        }
-                        .numbers {
-                            margin: 20px 0;
-                            font-size: 1.2em;
-                        }
-                        .historial-link {
-                            display: inline-block;
-                            margin: 20px 0;
-                            padding: 10px 20px;
-                            background-color: #0066cc;
-                            color: white;
-                            text-decoration: none;
-                            border-radius: 5px;
-                        }
-                        .historial-link:hover {
-                            background-color: #0052a3;
-                        }
-                        hr {
-                            margin: 30px auto;
-                            width: 80%;
-                            border: 0;
-                            height: 1px;
-                            background-color: #ccc;
-                        }
-                        .footer-info {
-                            color: #666;
-                            font-size: 0.9em;
-                            margin: 20px 0;
-                        }
-                    </style>
+<style>
+            body {
+                font-family: Arial, sans-serif;
+                margin: 20px;
+                text-align: center;
+            }
+            /* ... otros estilos existentes ... */
+            
+            .admin-controls {
+                margin: 20px 0;
+                padding: 20px;
+                background-color: #f8f8f8;
+                border-radius: 5px;
+            }
+            .admin-button {
+                background-color: #dc3545;
+                color: white;
+                padding: 10px 20px;
+                border: none;
+                border-radius: 5px;
+                cursor: pointer;
+                font-size: 1em;
+                text-decoration: none;
+                display: inline-block;
+            }
+            .admin-button:hover {
+                background-color: #c82333;
+            }
+            .warning-text {
+                color: #dc3545;
+                font-size: 0.9em;
+                margin-top: 10px;
+            }
+        </style>                    
                 </head>
                 <body>
                     <h1>Sistema de Bingo</h1>
@@ -314,6 +358,13 @@ const server = http.createServer(async (req, res) => {
             if (estadoJuego.estado === 'programado') {
                 html += `
                     <h2>Próximo bingo en:</h2>
+                    <div class="admin-controls">
+                        <a href="/limpiar-tablas" class="admin-button" 
+                        onclick="return confirm('¿Estás seguro? Esto detendrá el bingo actual si existe y limpiará todas las tablas.')">
+                            Reiniciar Sistema
+                        </a>
+                        <p class="warning-text">⚠️ Esto detendrá el bingo actual y limpiará todas las tablas</p>
+                    </div>                    
                     <div id="countdown" class="countdown">Calculando...</div>
                     <p>Hora de inicio: ${estadoJuego.horaInicio}</p>
                     
@@ -404,20 +455,21 @@ process.on('SIGTERM', () => {
     process.exit(0);
 });
 
-const emitirEventoLocal = async (evento, numero) => {
+const emitirEventoLocal = async (evento, numero, secuencia, fecha_bingo) => {
     try {
         const numeroString = numero.toString();
 
         // Crear el mensaje en el formato específico que espera el servidor
         const mensaje = {
             numero: numeroString,
+            sec: secuencia,
             timestamp: new Date().toISOString()
         };
 
         const data = {
             canal: process.env.SOCKET_CANAL,
             token: process.env.SOCKET_TOKEN,
-            evento: evento,
+            evento: `Bingo_${fecha_bingo}`,
             mensaje: mensaje
         };
 
