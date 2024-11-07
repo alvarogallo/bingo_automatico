@@ -13,6 +13,9 @@ const {
 } = require('./utils/funciones');
 
 let intervalId = null;
+let bingoActivo = false;
+let juegoIdActual = null;
+
 
 const intervalo = parseInt(process.env.INTERVALO, 10) * 1000;
 const segundos = parseInt(process.env.INTERVALO, 10);
@@ -76,11 +79,20 @@ const generarSiguienteNumero = async (juegoId) => {
                     }
                 );
             });
-
+            try {
+                await emitirEventoLocal('bingo_auto', nuevoNumero);
+                console.log('Número enviado al socket:', nuevoNumero);
+            } catch (socketError) {
+                console.error('Error enviando número al socket:', socketError);
+                // No detenemos el bingo si falla el envío al socket
+            }
             console.log(`Número generado: ${nuevoNumero}`);
             return numerosCantados;
         } else {
             clearInterval(intervalId);
+            intervalId = null;
+            bingoActivo = false;
+            juegoIdActual = null;
             console.log('\n=== Bingo Completado ===');
             console.log('Guardando en historial...');
 
@@ -97,25 +109,7 @@ const generarSiguienteNumero = async (juegoId) => {
                     );
                 });
 
-                // Formatear hora para el historial (HH:mm)
-                // const horaFormateada = new Date(bingoActual.hora_inicio)
-                //     .toLocaleTimeString('es-CO', { 
-                //         hour: '2-digit', 
-                //         minute: '2-digit',
-                //         hour12: false,
-                //         timeZone: 'America/Bogota'
-                //     });
-                // const horaFormateada = new Date(bingoActual.hora_inicio)
-                //     .toLocaleString('es-CO', {
-                //         year: 'numeric',
-                //         month: '2-digit',
-                //         day: '2-digit',
-                //         hour: '2-digit',
-                //         minute: '2-digit',
-                //         hour12: false,
-                //         timeZone: 'America/Bogota'
-                //     })
-                //     .replace(/\//g, '-'); 
+
                 const fecha = new Date(bingoActual.hora_inicio);
                 const year = fecha.getFullYear();
                 const month = String(fecha.getMonth() + 1).padStart(2, '0');
@@ -124,7 +118,7 @@ const generarSiguienteNumero = async (juegoId) => {
                 const minutes = String(fecha.getMinutes()).padStart(2, '0');
                 
                 const horaFormateada = `${year}-${month}-${day} ${hours}:${minutes}`;
-                
+
                 const numerosParaGuardar = JSON.stringify({ numeros: numerosCantados });
 
                 console.log('Datos a guardar:');
@@ -239,6 +233,7 @@ const obtenerEstadoJuego = async () => {
             if (!intervalId) {
                 intervalId = setInterval(() => generarSiguienteNumero(row.id), intervalo); // Usar el intervalo del archivo .env
             }
+            await continuarBingoEnSegundoPlano(row.id);
         }
 
         return {
@@ -386,6 +381,107 @@ const server = http.createServer(async (req, res) => {
     }
 });
 
+process.on('SIGINT', async () => {
+    console.log('\nRecibida señal de cierre...');
+    if (bingoActivo) {
+        console.log('Hay un bingo activo, continuará en segundo plano');
+        console.log('ID del juego activo:', juegoIdActual);
+        console.log('Para detener completamente el proceso, usa SIGTERM');
+    } else {
+        if (intervalId) {
+            clearInterval(intervalId);
+        }
+        console.log('No hay bingo activo, cerrando proceso');
+        process.exit(0);
+    }
+});
+
+process.on('SIGTERM', () => {
+    console.log('\nForzando cierre del proceso...');
+    if (intervalId) {
+        clearInterval(intervalId);
+    }
+    process.exit(0);
+});
+
+const emitirEventoLocal = async (evento, numero) => {
+    try {
+        const numeroString = numero.toString();
+
+        // Crear el mensaje en el formato específico que espera el servidor
+        const mensaje = {
+            numero: numeroString,
+            timestamp: new Date().toISOString()
+        };
+
+        const data = {
+            canal: process.env.SOCKET_CANAL,
+            token: process.env.SOCKET_TOKEN,
+            evento: evento,
+            mensaje: mensaje
+        };
+
+        const response = await fetch(process.env.SOCKET_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(JSON.stringify(data))
+            },
+            body: JSON.stringify(data)
+        });
+
+        const httpCode = response.status;
+        const responseData = await response.text();
+
+        console.log('Status Code:', httpCode);
+        console.log('Response:', responseData);
+
+        return {
+            httpCode,
+            response: responseData
+        };
+
+    } catch (error) {
+        console.error('Error en emitirEventoLocal:', error);
+        throw error;
+    }
+};
+
+module.exports = {
+    emitirEventoLocal
+};
+
 server.listen(3000, () => {
     console.log('Servidor ejecutándose en http://localhost:3000/');
 });
+
+const continuarBingoEnSegundoPlano = async (juegoId) => {
+    try {
+        const row = await new Promise((resolve, reject) => {
+            db.get(
+                'SELECT estado, numeros_cantados FROM bingo_juegos WHERE id = ?',
+                [juegoId],
+                (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row);
+                }
+            );
+        });
+
+        if (row && row.estado === 'en_curso') {
+            bingoActivo = true;
+            juegoIdActual = juegoId;
+
+            if (!intervalId) {
+                console.log('Reiniciando generación de números para bingo en curso');
+                intervalId = setInterval(() => {
+                    generarSiguienteNumero(juegoId).catch(err => {
+                        console.error('Error generando número:', err);
+                    });
+                }, intervalo);
+            }
+        }
+    } catch (error) {
+        console.error('Error al continuar bingo en segundo plano:', error);
+    }
+};
