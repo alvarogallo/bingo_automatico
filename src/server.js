@@ -203,7 +203,6 @@ const generarSiguienteNumero = async (juegoId) => {
     }
 };
 
-
 const obtenerEstadoJuego = async () => {
     try {
         let row = await new Promise((resolve, reject) => {
@@ -249,11 +248,17 @@ const obtenerEstadoJuego = async () => {
                 );
             });
             row.estado = 'en_curso';
+            
+            bingoActivo = true;
+            juegoIdActual = row.id;
 
             if (!intervalId) {
-                intervalId = setInterval(() => generarSiguienteNumero(row.id), intervalo); // Usar el intervalo del archivo .env
+                intervalId = setInterval(() => {
+                    generarSiguienteNumero(row.id).catch(err => {
+                        console.error('Error generando número:', err);
+                    });
+                }, intervalo);
             }
-            await continuarBingoEnSegundoPlano(row.id);
         }
 
         return {
@@ -315,40 +320,40 @@ const server = http.createServer(async (req, res) => {
                 <html>
                 <head>
                     <title>Sistema de Bingo</title>
-<style>
-            body {
-                font-family: Arial, sans-serif;
-                margin: 20px;
-                text-align: center;
-            }
-            /* ... otros estilos existentes ... */
-            
-            .admin-controls {
-                margin: 20px 0;
-                padding: 20px;
-                background-color: #f8f8f8;
-                border-radius: 5px;
-            }
-            .admin-button {
-                background-color: #dc3545;
-                color: white;
-                padding: 10px 20px;
-                border: none;
-                border-radius: 5px;
-                cursor: pointer;
-                font-size: 1em;
-                text-decoration: none;
-                display: inline-block;
-            }
-            .admin-button:hover {
-                background-color: #c82333;
-            }
-            .warning-text {
-                color: #dc3545;
-                font-size: 0.9em;
-                margin-top: 10px;
-            }
-        </style>                    
+                    <style>
+                    body {
+                        font-family: Arial, sans-serif;
+                        margin: 20px;
+                        text-align: center;
+                    }
+                    /* ... otros estilos existentes ... */
+                    
+                    .admin-controls {
+                        margin: 20px 0;
+                        padding: 20px;
+                        background-color: #f8f8f8;
+                        border-radius: 5px;
+                    }
+                    .admin-button {
+                        background-color: #dc3545;
+                        color: white;
+                        padding: 10px 20px;
+                        border: none;
+                        border-radius: 5px;
+                        cursor: pointer;
+                        font-size: 1em;
+                        text-decoration: none;
+                        display: inline-block;
+                    }
+                    .admin-button:hover {
+                        background-color: #c82333;
+                    }
+                    .warning-text {
+                        color: #dc3545;
+                        font-size: 0.9em;
+                        margin-top: 10px;
+                    }
+                </style>                    
                 </head>
                 <body>
                     <h1>Sistema de Bingo</h1>
@@ -502,10 +507,72 @@ const emitirEventoLocal = async (evento, numero, secuencia, fecha_bingo) => {
 module.exports = {
     emitirEventoLocal
 };
+// Función de inicialización del sistema
+const inicializarSistema = async () => {
+    try {
+        console.log('Inicializando sistema...');
+        
+        // Verificar si hay un bingo activo o programado
+        const bingoActual = await new Promise((resolve, reject) => {
+            db.get(
+                "SELECT * FROM bingo_juegos WHERE estado IN ('programado', 'en_curso') ORDER BY id DESC LIMIT 1",
+                (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row);
+                }
+            );
+        });
 
+        if (bingoActual) {
+            const horaInicio = new Date(bingoActual.hora_inicio);
+            const ahora = new Date();
+
+            if (bingoActual.estado === 'en_curso') {
+                console.log('Continuando bingo en curso...');
+                bingoActivo = true;
+                juegoIdActual = bingoActual.id;
+
+                if (!intervalId) {
+                    intervalId = setInterval(() => {
+                        generarSiguienteNumero(bingoActual.id).catch(err => {
+                            console.error('Error generando número:', err);
+                        });
+                    }, intervalo);
+                }
+            } else if (bingoActual.estado === 'programado' && ahora >= horaInicio) {
+                console.log('Iniciando bingo programado...');
+                await db.run(
+                    'UPDATE bingo_juegos SET estado = ? WHERE id = ?',
+                    ['en_curso', bingoActual.id]
+                );
+                
+                bingoActivo = true;
+                juegoIdActual = bingoActual.id;
+
+                if (!intervalId) {
+                    intervalId = setInterval(() => {
+                        generarSiguienteNumero(bingoActual.id).catch(err => {
+                            console.error('Error generando número:', err);
+                        });
+                    }, intervalo);
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Error en la inicialización del sistema:', error);
+    }
+};
+inicializarSistema();
+// Iniciar el servidor y el sistema
+setInterval(inicializarSistema, 60000); // Verificar cada minuto
 server.listen(3000, () => {
     console.log('Servidor ejecutándose en http://localhost:3000/');
+    
 });
+
+// server.listen(3000, () => {
+//     console.log('Servidor ejecutándose en http://localhost:3000/');
+// });
 
 const continuarBingoEnSegundoPlano = async (juegoId) => {
     try {
