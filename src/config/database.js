@@ -1,10 +1,19 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const fs = require('fs');
 
-// Define la ruta de la base de datos
-const dbPath = path.join(__dirname, '../../database/mydb.sqlite');
+// Asegurar que el directorio database existe
+const dbDirectory = path.join(__dirname, '../../database');
+if (!fs.existsSync(dbDirectory)) {
+    fs.mkdirSync(dbDirectory, { recursive: true });
+    console.log('Directorio de base de datos creado:', dbDirectory);
+}
 
-// Crea una nueva conexión a la base de datos
+// Ruta completa de la base de datos
+const dbPath = path.join(dbDirectory, 'mydb.sqlite');
+console.log('Ruta de la base de datos:', dbPath);
+
+// Crear la conexión a la base de datos
 const db = new sqlite3.Database(dbPath, (err) => {
     if (err) {
         console.error('Error al conectar con la base de datos:', err);
